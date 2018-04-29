@@ -52,7 +52,7 @@ def do_train():
         action_count=action_count,
         memory_size=10000,
         batch_size=128,
-        update_network_iter=200,
+        update_network_iter=40,
         choose_e_greedy_increase=0.005
     )
     log_dir = "logs"
@@ -62,7 +62,7 @@ def do_train():
     loss_buffer = []
     total_reward_buffer = []
     total_step_buffer = []
-    for epoch in range(10):
+    for epoch in range(200):
         s = env.reset()
         state_buffer = deque(maxlen=TIME_STEP_AS_STATE)
         state_buffer.append(s)
@@ -84,9 +84,10 @@ def do_train():
             if cur_state is not None and next_state is not None:
                 ddqn.store(cur_state, action, reward, next_state)
             cur_state = next_state
-            loss = ddqn.learn()
-            print("step: ", total_step, "reward: ", reward, "loss: ", loss)
-            loss_buffer.append(loss)
+            if ddqn.data_count % 50 == 0:
+                loss = ddqn.learn()
+                # print("step: ", total_step, "reward: ", reward, "loss: ", loss)
+                loss_buffer.append(loss)
             total_step += 1
             total_reward += reward
         print("epoch: ", epoch,
