@@ -52,7 +52,7 @@ def do_train():
         action_count=action_count,
         memory_size=10000,
         batch_size=128,
-        update_network_iter=40,
+        update_network_iter=100,
         choose_e_greedy_increase=0.005
     )
     log_dir = "logs"
@@ -62,7 +62,7 @@ def do_train():
     loss_buffer = []
     total_reward_buffer = []
     total_step_buffer = []
-    for epoch in range(200):
+    for epoch in range(2000):
         s = env.reset()
         state_buffer = deque(maxlen=TIME_STEP_AS_STATE)
         state_buffer.append(s)
@@ -78,6 +78,8 @@ def do_train():
             else:
                 action = np.random.randint(0, action_count)
             n_s, reward, is_done, info = env.step(action)
+            if is_done:
+                reward = -50
             state_buffer.append(n_s)
             if len(state_buffer) >= TIME_STEP_AS_STATE:
                 next_state = combine_state(state_buffer)
