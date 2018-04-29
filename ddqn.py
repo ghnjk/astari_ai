@@ -195,7 +195,7 @@ class DuelDQN(object):
                     bias_initializer=bias_initializer,
                     name="action_adavantage"
                 )
-            q = state_v + (action_adavantage - tf.reduce_mean(action_adavantage, axis=1, keepdims=True))
+            q = state_v + (action_adavantage - tf.reduce_mean(action_adavantage, axis=1, keep_dims=True))
         return q
 
     @staticmethod
@@ -247,3 +247,11 @@ class DuelDQN(object):
             name="layer_dropout_1"
         )
         return layer_dropout_1
+
+    def save_weight(self, weight_path):
+        saver = tf.train.Saver()
+        saver.save(self.sess, weight_path)
+
+    def load_weights(self, weight_path):
+        saver = tf.train.Saver()
+        saver.restore(self.sess, weight_path)

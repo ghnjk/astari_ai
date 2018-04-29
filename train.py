@@ -11,6 +11,7 @@ from collections import deque
 # 基本的state shape为(210, 160, 3)
 # 为了增加时间序， 我们将3个帧的state拼起来作为state
 TIME_STEP_AS_STATE = 3
+WEIGHT_DATA_PATH = "data/model_weights/ddqn_weights.ckpt"
 
 
 def set_rand_seed(seed):
@@ -58,6 +59,12 @@ def do_train():
     log_dir = "logs"
     log_writer = tf.summary.FileWriter(log_dir, sess.graph)
     sess.run(tf.global_variables_initializer())
+    try:
+        ddqn.load_weights(WEIGHT_DATA_PATH)
+        print("load weights from [%s] success." % WEIGHT_DATA_PATH)
+    except Exception as e:
+        print("load weights from [%s] failed: %s" % (WEIGHT_DATA_PATH, e.message))
+        print("init ddqn as random weights.")
     sumary()
     loss_buffer = []
     total_reward_buffer = []
@@ -79,7 +86,7 @@ def do_train():
                 action = np.random.randint(0, action_count)
             n_s, reward, is_done, info = env.step(action)
             if is_done:
-                reward = -50
+                reward = -200
             state_buffer.append(n_s)
             if len(state_buffer) >= TIME_STEP_AS_STATE:
                 next_state = combine_state(state_buffer)
@@ -99,6 +106,7 @@ def do_train():
               )
         total_reward_buffer.append(total_reward)
         total_step_buffer.append(total_step)
+        ddqn.save_weight(WEIGHT_DATA_PATH)
     log_writer.close()
     plt.subplot(221)
     plt.plot(total_step_buffer)
