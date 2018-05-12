@@ -42,6 +42,30 @@ def combine_state(state_buffer):
     return state
 
 
+def evaluate_last_score(total_step, total_reward):
+    score = 0
+    if total_reward > 700:
+        score = 1000
+    elif total_reward > 600:
+        score = 800
+    elif total_reward > 500 and total_step > 1500:
+        score = 800
+    elif total_reward > 500 and total_step > 1000:
+        score = 200
+    elif total_reward > 300 and total_step > 800:
+        score = 0
+    elif total_reward > 200 and total_step > 1000:
+        score = -400
+    elif total_reward > 100 and total_step > 600:
+        score = -800
+    else:
+        score = -1000
+    score += total_reward / 2
+    score /= 10
+    print("evaluate_last_score: ", score)
+    return score
+
+
 def do_train():
     env = gym.make("SpaceInvaders-v0")
     state_shape = env.observation_space.shape
@@ -51,10 +75,11 @@ def do_train():
         sess=sess,
         feature_shape=[None, state_shape[0], state_shape[1], state_shape[2] * TIME_STEP_AS_STATE],
         action_count=action_count,
-        memory_size=10000,
-        batch_size=128,
+        memory_size=5000,
+        batch_size=256,
         update_network_iter=100,
-        choose_e_greedy_increase=0.005
+        #choose_e_greedy_increase=0.005,
+        learning_rate=0.0005
     )
     log_dir = "logs"
     log_writer = tf.summary.FileWriter(log_dir, sess.graph)
@@ -86,14 +111,14 @@ def do_train():
                 action = np.random.randint(0, action_count)
             n_s, reward, is_done, info = env.step(action)
             if is_done:
-                reward = -200
+                reward = evaluate_last_score(total_step, total_reward)
             state_buffer.append(n_s)
             if len(state_buffer) >= TIME_STEP_AS_STATE:
                 next_state = combine_state(state_buffer)
             if cur_state is not None and next_state is not None:
                 ddqn.store(cur_state, action, reward, next_state)
             cur_state = next_state
-            if ddqn.data_count % 50 == 0:
+            if ddqn.data_count % 20 == 0:
                 loss = ddqn.learn()
                 # print("step: ", total_step, "reward: ", reward, "loss: ", loss)
                 loss_buffer.append(loss)

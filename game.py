@@ -52,10 +52,11 @@ def boot_game():
         sess=sess,
         feature_shape=[None, state_shape[0], state_shape[1], state_shape[2] * TIME_STEP_AS_STATE],
         action_count=action_count,
-        memory_size=10000,
-        batch_size=128,
+        memory_size=5000,
+        batch_size=256,
         update_network_iter=100,
-        choose_e_greedy_increase=0.005
+        choose_e_greedy=1.0,
+        choose_e_greedy_increase=None
     )
     sess.run(tf.global_variables_initializer())
     ddqn.load_weights(WEIGHT_DATA_PATH)
