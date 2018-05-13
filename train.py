@@ -84,7 +84,7 @@ def do_train():
         batch_size=256,
         update_network_iter=100,
         choose_e_greedy_increase=0.005,
-        learning_rate=0.001
+        learning_rate=0.00025
     )
     log_dir = "logs"
     log_writer = tf.summary.FileWriter(log_dir, sess.graph)
