@@ -106,7 +106,6 @@ def do_train():
         state_buffer.append(s)
         is_done = False
         cur_state = None
-        next_state = None
         total_reward = 0
         total_step = 0
         loss = 0
@@ -115,20 +114,21 @@ def do_train():
                 action = ddqn.choose_action(cur_state)
             else:
                 action = np.random.randint(0, action_count)
-            n_s, reward, is_done, info = env.step(action)
-            n_s = transfer_observation(n_s)
-            if is_done:
-                reward = evaluate_last_score(total_step, total_reward)
-            state_buffer.append(n_s)
-            if len(state_buffer) >= TIME_STEP_AS_STATE:
-                next_state = combine_state(state_buffer)
+            reward = 0
+            for f in range(TIME_STEP_AS_STATE):
+                n_s, _reward, _is_done, info = env.step(action)
+                n_s = transfer_observation(n_s)
+                state_buffer.append(n_s)
+                if _is_done:
+                    is_done = True
+                reward += _reward
+            next_state = combine_state(state_buffer)
             if cur_state is not None and next_state is not None:
-                ddqn.store(cur_state, action, reward, next_state)
+                ddqn.store(cur_state, action, reward, next_state, is_done)
             cur_state = next_state
-            if ddqn.data_count % 20 == 0:
-                loss = ddqn.learn()
-                # print("step: ", total_step, "reward: ", reward, "loss: ", loss)
-                loss_buffer.append(loss)
+            loss = ddqn.learn()
+            # print("step: ", total_step, "reward: ", reward, "loss: ", loss)
+            loss_buffer.append(loss)
             total_step += 1
             total_reward += reward
         print("epoch: ", epoch,

@@ -63,8 +63,8 @@ class DuelDQN(object):
         else:
             return np.random.randint(0, self.action_count)
 
-    def store(self, cur_state, action, reward, next_state):
-        item = [cur_state, action, reward, next_state]
+    def store(self, cur_state, action, reward, next_state, is_done):
+        item = [cur_state, action, reward, next_state, is_done]
         self.memory.append(item)
         self.data_count += 1
 
@@ -74,18 +74,20 @@ class DuelDQN(object):
 
         if self.learn_counter % self.update_network_iter == 0:
             self.sess.run(self.tf_update_network_o)
-            print("update target network")
+            # print("update target network")
 
         samples = self.memory.choose_sample(sample_count=self.batch_size)
         cur_state = []
         action = []
         reward = []
         next_state = []
+        is_done = []
         for item in samples:
             cur_state.append(item[0])
             action.append(item[1])
             reward.append(item[2])
             next_state.append(item[3])
+            is_done.append(item[4])
 
         q_eval, q_real = self.sess.run(
             [self.tf_q_eval, self.tf_q_real],
@@ -96,8 +98,11 @@ class DuelDQN(object):
         )
         # 计算q_target = reward + reward_decay * max(q_real)
         q_target = q_eval.copy()
-        batch_idx = np.arange(self.batch_size, dtype=np.int32)
-        q_target[batch_idx, action] = reward + self.reward_decay * np.max(q_real, axis=1)
+        for idx in range(self.batch_size):
+            if is_done[idx]:
+                q_target[idx] = reward[idx]
+            else:
+                q_target[idx] = reward[idx] + self.reward_decay * np.max(q_real[idx])
 
         _, loss = self.sess.run(
             [self.tf_train_op, self.tf_loss],
@@ -126,7 +131,9 @@ class DuelDQN(object):
         with tf.variable_scope("loss"):
             self.tf_loss = tf.reduce_mean(tf.squared_difference(self.tf_q_target, self.tf_q_eval))
         with tf.variable_scope("train"):
-            self.tf_train_op = tf.train.RMSPropOptimizer(self.learning_rate).minimize(self.tf_loss)
+            self.tf_train_op = tf.train.RMSPropOptimizer(
+                self.learning_rate, decay=0.95, epsilon=0.01
+            ).minimize(self.tf_loss)
 
         self.tf_eval_net_variables = tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope="eval_net")
         self.tf_target_net_variables = tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope="target_net")
@@ -177,7 +184,6 @@ class DuelDQN(object):
                         inputs=layer_conv2d_2,
                         filters=64,
                         kernel_size=(3, 3),
-                        strides=(2, 2),
                         padding="valid",
                         activation=tf.nn.relu,
                         use_bias=True,
