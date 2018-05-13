@@ -140,21 +140,65 @@ class DuelDQN(object):
         bias_initializer = tf.constant_initializer(0.1)
         with tf.variable_scope(scope):
             with tf.variable_scope("image_feature"):
-                with tf.variable_scope("conv_layer_1"):
-                    conv_layer_1 = self._add_one_feature_layer(inputs, conv2d_filter=16, dropout_rate=0.1)
-
-                with tf.variable_scope("conv_layer_2"):
-                    conv_layer_2 = self._add_one_feature_layer(inputs=conv_layer_1, conv2d_filter=32, dropout_rate=0.1)
+                with tf.variable_scope("conv2d_layers"):
+                    layer_conv2d_1 = tf.layers.conv2d(
+                        inputs=inputs,
+                        filters=32,
+                        kernel_size=(8, 8),
+                        strides=(4, 4),
+                        padding="valid",
+                        activation=tf.nn.relu,
+                        use_bias=True,
+                        kernel_initializer=w_initializer,
+                        bias_initializer=bias_initializer,
+                        name="conv_layer_1"
+                    )
+                    layer_conv2d_1 = tf.layers.batch_normalization(
+                        inputs=layer_conv2d_1,
+                        name="layer_batch_normal_1"
+                    )
+                    layer_conv2d_2 = tf.layers.conv2d(
+                        inputs=layer_conv2d_1,
+                        filters=64,
+                        kernel_size=(4, 4),
+                        strides=(2, 2),
+                        padding="valid",
+                        activation=tf.nn.relu,
+                        use_bias=True,
+                        kernel_initializer=w_initializer,
+                        bias_initializer=bias_initializer,
+                        name="conv_layer_2"
+                    )
+                    layer_conv2d_2 = tf.layers.batch_normalization(
+                        inputs=layer_conv2d_2,
+                        name="layer_batch_normal_2"
+                    )
+                    layer_conv2d_3 = tf.layers.conv2d(
+                        inputs=layer_conv2d_2,
+                        filters=64,
+                        kernel_size=(3, 3),
+                        strides=(2, 2),
+                        padding="valid",
+                        activation=tf.nn.relu,
+                        use_bias=True,
+                        kernel_initializer=w_initializer,
+                        bias_initializer=bias_initializer,
+                        name="conv_layer_3"
+                    )
+                    layer_batch_normal = tf.layers.batch_normalization(
+                        inputs=layer_conv2d_3,
+                        name="layer_batch_normal_3"
+                    )
 
                 with tf.variable_scope("dense_layer_1"):
                     flattten_layer = tf.layers.flatten(
-                        inputs=conv_layer_2,
+                        inputs=layer_batch_normal,
                         name="flatter_layer"
                     )
                     dense_layer = tf.layers.dense(
                         inputs=flattten_layer,
-                        units=32,
-                        activation=tf.nn.tanh,
+                        units=512,
+                        activation=tf.nn.relu,
                         kernel_initializer=w_initializer,
                         bias_initializer=bias_initializer,
                         name="dense_layer"
@@ -163,7 +207,7 @@ class DuelDQN(object):
             with tf.variable_scope("state_v"):
                 dense_layer = tf.layers.dense(
                     inputs=tf_img_feature,
-                    units=16,
+                    units=64,
                     activation=tf.nn.tanh,
                     kernel_initializer=w_initializer,
                     bias_initializer=bias_initializer,
@@ -180,7 +224,7 @@ class DuelDQN(object):
             with tf.variable_scope("action_adavantage"):
                 dense_layer = tf.layers.dense(
                     inputs=tf_img_feature,
-                    units=16,
+                    units=64,
                     activation=tf.nn.tanh,
                     kernel_initializer=w_initializer,
                     bias_initializer=bias_initializer,
@@ -198,15 +242,15 @@ class DuelDQN(object):
         return q
 
     @staticmethod
-    def _add_one_feature_layer(inputs, conv2d_filter, dropout_rate):
+    def _add_one_feature_layer(inputs, conv2d_filter_1, conv2d_filter_2):
         w_initializer = tf.random_normal_initializer(0, 3)
         bias_initializer = tf.constant_initializer(0.1)
         layer_conv2d_1 = tf.layers.conv2d(
             inputs=inputs,
-            filters=conv2d_filter,
+            filters=conv2d_filter_1,
             kernel_size=(2, 2),
-            strides=(2, 2),
-            padding="valid",
+            strides=(1, 1),
+            padding="same",
             activation=tf.nn.relu,
             use_bias=True,
             kernel_initializer=w_initializer,
@@ -219,10 +263,10 @@ class DuelDQN(object):
         )
         layer_conv2d_2 = tf.layers.conv2d(
             inputs=layer_batch_normal_1,
-            filters=conv2d_filter,
+            filters=conv2d_filter_2,
             kernel_size=(2, 2),
-            strides=(2, 2),
-            padding="valid",
+            strides=(1, 1),
+            padding="same",
             activation=tf.nn.relu,
             use_bias=True,
             kernel_initializer=w_initializer,
@@ -237,15 +281,10 @@ class DuelDQN(object):
             inputs=layer_batch_normal_2,
             pool_size=(2, 2),
             strides=(2, 2),
-            padding="valid",
+            padding="same",
             name="layer_max_pool_1"
         )
-        layer_dropout_1 = tf.layers.dropout(
-            inputs=layer_max_pool_1,
-            rate=dropout_rate,
-            name="layer_dropout_1"
-        )
-        return layer_dropout_1
+        return layer_max_pool_1
 
     def save_weight(self, weight_path):
         saver = tf.train.Saver()

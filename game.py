@@ -7,6 +7,7 @@ import gym
 from ddqn import DuelDQN
 from collections import deque
 import time
+import cv2
 
 
 # 基本的state shape为(210, 160, 3)
@@ -21,26 +22,15 @@ def set_rand_seed(seed):
     tf.set_random_seed(seed)
 
 
-def sumary():
-    total_variables = 0
-    for var in tf.trainable_variables():
-        shape = []
-        var_cnt = 1
-        for dim in var.get_shape():
-            var_cnt *= dim.value
-            shape.append(dim.value)
-        total_variables += var_cnt
-        print("var_name: ", var.name)
-        print("shape: ", shape,
-              "variables: ", var_cnt)
-    print("total_variables: ", total_variables)
-
-
 def combine_state(state_buffer):
-    state = state_buffer[0]
-    for i in range(1, TIME_STEP_AS_STATE):
-        state = np.concatenate([state, state_buffer[i]], axis=2)
-    return state
+    state = []
+    for i in range(0, TIME_STEP_AS_STATE):
+        state.append(state_buffer[i])
+    return np.array(state).transpose((2, 1, 0))
+
+
+def transfer_observation(s):
+    return cv2.resize(cv2.cvtColor(s, cv2.COLOR_RGB2GRAY), (s.shape[0] / 2, s.shape[1] / 2))
 
 
 def boot_game():
@@ -50,7 +40,7 @@ def boot_game():
     sess = tf.Session()
     ddqn = DuelDQN(
         sess=sess,
-        feature_shape=[None, state_shape[0], state_shape[1], state_shape[2] * TIME_STEP_AS_STATE],
+        feature_shape=[None, state_shape[0] / 2, state_shape[1] / 2, TIME_STEP_AS_STATE],
         action_count=action_count,
         memory_size=5000,
         batch_size=256,
@@ -62,6 +52,7 @@ def boot_game():
     ddqn.load_weights(WEIGHT_DATA_PATH)
     is_done = False
     s = env.reset()
+    s = transfer_observation(s)
     state_buffer = deque(maxlen=TIME_STEP_AS_STATE)
     state_buffer.append(s)
     cur_state = None
@@ -75,6 +66,7 @@ def boot_game():
         else:
             action = np.random.randint(0, action_count)
         n_s, reward, is_done, info = env.step(action)
+        n_s = transfer_observation(n_s)
         state_buffer.append(n_s)
         if len(state_buffer) >= TIME_STEP_AS_STATE:
             next_state = combine_state(state_buffer)

@@ -7,6 +7,8 @@ import gym
 import matplotlib.pyplot as plt
 from ddqn import DuelDQN
 from collections import deque
+import cv2
+
 
 # 基本的state shape为(210, 160, 3)
 # 为了增加时间序， 我们将3个帧的state拼起来作为state
@@ -36,14 +38,17 @@ def sumary():
 
 
 def combine_state(state_buffer):
-    state = state_buffer[0]
-    for i in range(1, TIME_STEP_AS_STATE):
-        state = np.concatenate([state, state_buffer[i]], axis=2)
-    return state
+    state = []
+    for i in range(0, TIME_STEP_AS_STATE):
+        state.append(state_buffer[i])
+    return np.array(state).transpose((2, 1, 0))
+
+
+def transfer_observation(s):
+    return cv2.resize(cv2.cvtColor(s, cv2.COLOR_RGB2GRAY), (s.shape[0] / 2, s.shape[1] / 2))
 
 
 def evaluate_last_score(total_step, total_reward):
-    score = 0
     if total_reward > 700:
         score = 1000
     elif total_reward > 600:
@@ -73,13 +78,13 @@ def do_train():
     sess = tf.Session()
     ddqn = DuelDQN(
         sess=sess,
-        feature_shape=[None, state_shape[0], state_shape[1], state_shape[2] * TIME_STEP_AS_STATE],
+        feature_shape=[None, state_shape[0] / 2, state_shape[1] / 2, TIME_STEP_AS_STATE],
         action_count=action_count,
-        memory_size=5000,
+        memory_size=10000,
         batch_size=256,
         update_network_iter=100,
-        #choose_e_greedy_increase=0.005,
-        learning_rate=0.0005
+        choose_e_greedy_increase=0.005,
+        learning_rate=0.001
     )
     log_dir = "logs"
     log_writer = tf.summary.FileWriter(log_dir, sess.graph)
@@ -96,6 +101,7 @@ def do_train():
     total_step_buffer = []
     for epoch in range(2000):
         s = env.reset()
+        s = transfer_observation(s)
         state_buffer = deque(maxlen=TIME_STEP_AS_STATE)
         state_buffer.append(s)
         is_done = False
@@ -110,6 +116,7 @@ def do_train():
             else:
                 action = np.random.randint(0, action_count)
             n_s, reward, is_done, info = env.step(action)
+            n_s = transfer_observation(n_s)
             if is_done:
                 reward = evaluate_last_score(total_step, total_reward)
             state_buffer.append(n_s)

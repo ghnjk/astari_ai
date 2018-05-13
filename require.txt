@@ -1,0 +1,4 @@
+gym>=0.10.5
+Keras>=2.1.5
+tensorflow>=1.6.0
+opencv-python>=3.4.0.12
