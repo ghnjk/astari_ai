@@ -1,5 +1,7 @@
 [space-invader gym](https://gym.openai.com/envs/SpaceInvaders-v0/)
 
+  http://papers.nips.cc/paper/5421-deep-learning-for-real-time-atari-game-play-using-offline-monte-carlo-tree-search-planning.pdf
+
 # 网络结构
 
 ```
