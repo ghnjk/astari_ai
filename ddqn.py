@@ -5,6 +5,10 @@ import numpy as np
 from memory import RandomMemory
 
 
+def randomargmax(b, **kw):
+    return np.argmax(np.random.random(b.shape) * (b == b.max()), **kw)
+
+
 class DuelDQN(object):
 
     def __init__(self, sess, feature_shape, action_count,
@@ -12,7 +16,7 @@ class DuelDQN(object):
                  batch_size=128,
                  update_network_iter=200,
                  learning_rate=0.001,
-                 reward_decay=0.95,
+                 reward_decay=0.99,
                  choose_e_greedy=0.9,
                  choose_e_greedy_increase=None):
         self.sess = sess
@@ -50,7 +54,7 @@ class DuelDQN(object):
 
         self._build_net()
 
-    def choose_action(self, cur_state):
+    def choose_action(self, cur_state, is_game_mode=False):
         cur_state = np.array(cur_state)[np.newaxis, :]
         if np.random.uniform() < self.choose_random_rate:
             act_values = self.sess.run(
@@ -59,7 +63,10 @@ class DuelDQN(object):
                     self.tf_cur_state: cur_state
                 }
             )
-            return np.argmax(act_values)
+            if is_game_mode:
+                act_values = np.round(act_values, 1)
+                print(act_values)
+            return randomargmax(act_values)
         else:
             return np.random.randint(0, self.action_count)
 
@@ -74,7 +81,7 @@ class DuelDQN(object):
 
         if self.learn_counter % self.update_network_iter == 0:
             self.sess.run(self.tf_update_network_o)
-            # print("update target network")
+            print("update target network")
 
         samples = self.memory.choose_sample(sample_count=self.batch_size)
         cur_state = []
@@ -129,10 +136,12 @@ class DuelDQN(object):
         self.tf_q_eval = self._build_q_net(self.tf_cur_state, "eval_net")
         self.tf_q_real = self._build_q_net(self.tf_next_state, "target_net")
         with tf.variable_scope("loss"):
-            self.tf_loss = tf.reduce_mean(tf.squared_difference(self.tf_q_target, self.tf_q_eval))
+            self.tf_loss = tf.reduce_mean(
+                tf.reduce_sum(tf.square(self.tf_q_target - self.tf_q_eval), axis=1)
+            )
         with tf.variable_scope("train"):
             self.tf_train_op = tf.train.RMSPropOptimizer(
-                self.learning_rate, decay=0.95, epsilon=0.01
+                self.learning_rate
             ).minimize(self.tf_loss)
 
         self.tf_eval_net_variables = tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope="eval_net")
@@ -184,6 +193,7 @@ class DuelDQN(object):
                         inputs=layer_conv2d_2,
                         filters=64,
                         kernel_size=(3, 3),
+                        strides=(1, 1),
                         padding="valid",
                         activation=tf.nn.relu,
                         use_bias=True,
@@ -191,60 +201,75 @@ class DuelDQN(object):
                         bias_initializer=bias_initializer,
                         name="conv_layer_3"
                     )
-                    layer_batch_normal = tf.layers.batch_normalization(
+                    # layer_conv2d_3 = tf.layers.max_pooling2d(
+                    #     inputs=layer_conv2d_2,
+                    #     pool_size=(3, 3),
+                    #     strides=(1, 1),
+                    #     padding="valid",
+                    #     name="conv_layer_3"
+                    # )
+                    layer_conv2d_3 = tf.layers.batch_normalization(
                         inputs=layer_conv2d_3,
                         name="layer_batch_normal_3"
                     )
 
                 with tf.variable_scope("dense_layer_1"):
                     flattten_layer = tf.layers.flatten(
-                        inputs=layer_batch_normal,
+                        inputs=layer_conv2d_3,
                         name="flatter_layer"
                     )
                     dense_layer = tf.layers.dense(
                         inputs=flattten_layer,
-                        units=512,
-                        activation=tf.nn.relu,
+                        units=128,
+                        activation=tf.nn.tanh,
                         kernel_initializer=w_initializer,
                         bias_initializer=bias_initializer,
                         name="dense_layer"
                     )
                 tf_img_feature = dense_layer
-            with tf.variable_scope("state_v"):
-                dense_layer = tf.layers.dense(
+            q = dense_layer = tf.layers.dense(
                     inputs=tf_img_feature,
-                    units=64,
-                    activation=tf.nn.tanh,
-                    kernel_initializer=w_initializer,
-                    bias_initializer=bias_initializer,
-                    name="dense_layer"
-                )
-                state_v = tf.layers.dense(
-                    inputs=dense_layer,
-                    units=1,
-                    activation=None,
-                    kernel_initializer=w_initializer,
-                    bias_initializer=bias_initializer,
-                    name="state_v"
-                )
-            with tf.variable_scope("action_adavantage"):
-                dense_layer = tf.layers.dense(
-                    inputs=tf_img_feature,
-                    units=64,
-                    activation=tf.nn.tanh,
-                    kernel_initializer=w_initializer,
-                    bias_initializer=bias_initializer,
-                    name="dense_layer"
-                )
-                action_adavantage = tf.layers.dense(
-                    inputs=dense_layer,
                     units=self.action_count,
                     activation=None,
                     kernel_initializer=w_initializer,
                     bias_initializer=bias_initializer,
-                    name="action_adavantage"
+                    name="dense_layer"
                 )
-            q = state_v + (action_adavantage - tf.reduce_mean(action_adavantage, axis=1, keep_dims=True))
+            # with tf.variable_scope("state_v"):
+            #     dense_layer = tf.layers.dense(
+            #         inputs=tf_img_feature,
+            #         units=64,
+            #         activation=tf.nn.tanh,
+            #         kernel_initializer=w_initializer,
+            #         bias_initializer=bias_initializer,
+            #         name="dense_layer"
+            #     )
+            #     state_v = tf.layers.dense(
+            #         inputs=dense_layer,
+            #         units=1,
+            #         activation=None,
+            #         kernel_initializer=w_initializer,
+            #         bias_initializer=bias_initializer,
+            #         name="state_v"
+            #     )
+            # with tf.variable_scope("action_adavantage"):
+            #     dense_layer = tf.layers.dense(
+            #         inputs=tf_img_feature,
+            #         units=64,
+            #         activation=tf.nn.tanh,
+            #         kernel_initializer=w_initializer,
+            #         bias_initializer=bias_initializer,
+            #         name="dense_layer"
+            #     )
+            #     action_adavantage = tf.layers.dense(
+            #         inputs=dense_layer,
+            #         units=self.action_count,
+            #         activation=None,
+            #         kernel_initializer=w_initializer,
+            #         bias_initializer=bias_initializer,
+            #         name="action_adavantage"
+            #     )
+            # q = state_v + (action_adavantage - tf.reduce_mean(action_adavantage, axis=1, keep_dims=True))
         return q
 
     @staticmethod

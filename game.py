@@ -9,10 +9,10 @@ from collections import deque
 import time
 import cv2
 
-
-# 基本的state shape为(210, 160, 3)
-# 为了增加时间序， 我们将3个帧的state拼起来作为state
-TIME_STEP_AS_STATE = 3
+SAME_ACTION_STEP = 1
+TIME_STEP_AS_STATE = 4
+IMAGE_HEIGHT = 84
+IMAGE_WIDTH = 84
 WEIGHT_DATA_PATH = "data/model_weights/ddqn_weights.ckpt"
 
 
@@ -30,21 +30,24 @@ def combine_state(state_buffer):
 
 
 def transfer_observation(s):
-    return cv2.resize(cv2.cvtColor(s, cv2.COLOR_RGB2GRAY), (s.shape[0] / 2, s.shape[1] / 2))
+    s = s[25: -12, :, :]
+    s = cv2.resize(cv2.cvtColor(s, cv2.COLOR_RGB2GRAY), (IMAGE_HEIGHT, IMAGE_WIDTH))
+    s = s / 256.0
+    return s
 
 
 def boot_game():
-    env = gym.make("SpaceInvaders-v0")
+    env = gym.make("Breakout-v0")
     state_shape = env.observation_space.shape
-    action_count = env.action_space.n
+    action_count = env.action_space.n - 1
     sess = tf.Session()
     ddqn = DuelDQN(
         sess=sess,
-        feature_shape=[None, state_shape[0] / 2, state_shape[1] / 2, TIME_STEP_AS_STATE],
+        feature_shape=[None, IMAGE_HEIGHT, IMAGE_WIDTH, TIME_STEP_AS_STATE],
         action_count=action_count,
         memory_size=5000,
         batch_size=256,
-        update_network_iter=100,
+        update_network_iter=300,
         choose_e_greedy=1.0,
         choose_e_greedy_increase=None
     )
@@ -60,20 +63,25 @@ def boot_game():
     total_reward = 0
     total_step = 0
     while not is_done:
-        env.render()
         if cur_state is not None:
-            action = ddqn.choose_action(cur_state)
+            action = ddqn.choose_action(cur_state, is_game_mode=True)
         else:
             action = np.random.randint(0, action_count)
-        n_s, reward, is_done, info = env.step(action)
-        n_s = transfer_observation(n_s)
-        state_buffer.append(n_s)
+        reward = 0
+        for f in range(SAME_ACTION_STEP):
+            n_s, _reward, _is_done, info = env.step(action + 1)
+            env.render()
+            time.sleep(0.1)
+            n_s = transfer_observation(n_s)
+            state_buffer.append(n_s)
+            if _is_done:
+                is_done = True
+            reward += _reward
         if len(state_buffer) >= TIME_STEP_AS_STATE:
             next_state = combine_state(state_buffer)
         cur_state = next_state
         total_step += 1
         total_reward += reward
-        time.sleep(0.2)
     print("game over. total_step: ", total_step, "total_reward: ", total_reward)
 
 

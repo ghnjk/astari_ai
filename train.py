@@ -12,7 +12,10 @@ import cv2
 
 # 基本的state shape为(210, 160, 3)
 # 为了增加时间序， 我们将3个帧的state拼起来作为state
-TIME_STEP_AS_STATE = 3
+SAME_ACTION_STEP = 1
+TIME_STEP_AS_STATE = 4
+IMAGE_HEIGHT = 84
+IMAGE_WIDTH = 84
 WEIGHT_DATA_PATH = "data/model_weights/ddqn_weights.ckpt"
 
 
@@ -45,46 +48,26 @@ def combine_state(state_buffer):
 
 
 def transfer_observation(s):
-    return cv2.resize(cv2.cvtColor(s, cv2.COLOR_RGB2GRAY), (s.shape[0] / 2, s.shape[1] / 2))
-
-
-def evaluate_last_score(total_step, total_reward):
-    if total_reward > 700:
-        score = 1000
-    elif total_reward > 600:
-        score = 800
-    elif total_reward > 500 and total_step > 1500:
-        score = 800
-    elif total_reward > 500 and total_step > 1000:
-        score = 200
-    elif total_reward > 300 and total_step > 800:
-        score = 0
-    elif total_reward > 200 and total_step > 1000:
-        score = -400
-    elif total_reward > 100 and total_step > 600:
-        score = -800
-    else:
-        score = -1000
-    score += total_reward / 2
-    score /= 10
-    print("evaluate_last_score: ", score)
-    return score
+    s = s[25: -12, :, :]
+    s = cv2.resize(cv2.cvtColor(s, cv2.COLOR_RGB2GRAY), (IMAGE_HEIGHT, IMAGE_WIDTH))
+    s = s / 256.0
+    return s
 
 
 def do_train():
-    env = gym.make("SpaceInvaders-v0")
+    env = gym.make("Breakout-v0")
     state_shape = env.observation_space.shape
-    action_count = env.action_space.n
+    action_count = env.action_space.n - 1
     sess = tf.Session()
     ddqn = DuelDQN(
         sess=sess,
-        feature_shape=[None, state_shape[0] / 2, state_shape[1] / 2, TIME_STEP_AS_STATE],
+        feature_shape=[None, IMAGE_HEIGHT, IMAGE_WIDTH, TIME_STEP_AS_STATE],
         action_count=action_count,
-        memory_size=10000,
-        batch_size=256,
-        update_network_iter=100,
+        memory_size=30000,
+        batch_size=32,
+        update_network_iter=5000,
         choose_e_greedy_increase=0.005,
-        learning_rate=0.00025
+        learning_rate=0.001
     )
     log_dir = "logs"
     log_writer = tf.summary.FileWriter(log_dir, sess.graph)
@@ -99,13 +82,14 @@ def do_train():
     loss_buffer = []
     total_reward_buffer = []
     total_step_buffer = []
-    for epoch in range(2000):
+    for epoch in range(5000):
         s = env.reset()
         s = transfer_observation(s)
         state_buffer = deque(maxlen=TIME_STEP_AS_STATE)
         state_buffer.append(s)
         is_done = False
         cur_state = None
+        next_state = None
         total_reward = 0
         total_step = 0
         loss = 0
@@ -115,18 +99,20 @@ def do_train():
             else:
                 action = np.random.randint(0, action_count)
             reward = 0
-            for f in range(TIME_STEP_AS_STATE):
-                n_s, _reward, _is_done, info = env.step(action)
+            for f in range(SAME_ACTION_STEP):
+                n_s, _reward, _is_done, info = env.step(action + 1)
                 n_s = transfer_observation(n_s)
                 state_buffer.append(n_s)
                 if _is_done:
                     is_done = True
                 reward += _reward
-            next_state = combine_state(state_buffer)
+            if len(state_buffer) >= TIME_STEP_AS_STATE:
+                next_state = combine_state(state_buffer)
             if cur_state is not None and next_state is not None:
                 ddqn.store(cur_state, action, reward, next_state, is_done)
             cur_state = next_state
-            loss = ddqn.learn()
+            if total_step % 1 == 0:
+                loss = ddqn.learn()
             # print("step: ", total_step, "reward: ", reward, "loss: ", loss)
             loss_buffer.append(loss)
             total_step += 1
@@ -138,7 +124,12 @@ def do_train():
               )
         total_reward_buffer.append(total_reward)
         total_step_buffer.append(total_step)
-        ddqn.save_weight(WEIGHT_DATA_PATH)
+        if epoch % 20 == 0:
+            print("epoch ", epoch, " last average rewards: ",
+                  np.average(np.array(total_reward_buffer)))
+            total_reward_buffer = []
+            total_step_buffer = []
+            ddqn.save_weight(WEIGHT_DATA_PATH)
     log_writer.close()
     plt.subplot(221)
     plt.plot(total_step_buffer)
