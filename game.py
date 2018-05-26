@@ -4,7 +4,7 @@ import tensorflow as tf
 import numpy as np
 import random
 import gym
-from ddqn import DuelDQN
+from dqn import DQN
 from collections import deque
 import time
 import cv2
@@ -13,7 +13,7 @@ SAME_ACTION_STEP = 1
 TIME_STEP_AS_STATE = 4
 IMAGE_HEIGHT = 84
 IMAGE_WIDTH = 84
-WEIGHT_DATA_PATH = "data/model_weights/ddqn_weights.ckpt"
+WEIGHT_DATA_PATH = "data/model_weights/dqn_weights.ckpt"
 
 
 def set_rand_seed(seed):
@@ -38,21 +38,20 @@ def transfer_observation(s):
 
 def boot_game():
     env = gym.make("Breakout-v0")
-    state_shape = env.observation_space.shape
     action_count = env.action_space.n - 1
     sess = tf.Session()
-    ddqn = DuelDQN(
+    dqn = DQN(
         sess=sess,
         feature_shape=[None, IMAGE_HEIGHT, IMAGE_WIDTH, TIME_STEP_AS_STATE],
         action_count=action_count,
-        memory_size=5000,
-        batch_size=256,
-        update_network_iter=300,
+        memory_size=20000,
+        batch_size=32,
+        update_network_iter=5000,
         choose_e_greedy=1.0,
         choose_e_greedy_increase=None
     )
     sess.run(tf.global_variables_initializer())
-    ddqn.load_weights(WEIGHT_DATA_PATH)
+    dqn.load_weights(WEIGHT_DATA_PATH)
     is_done = False
     s = env.reset()
     s = transfer_observation(s)
@@ -64,14 +63,14 @@ def boot_game():
     total_step = 0
     while not is_done:
         if cur_state is not None:
-            action = ddqn.choose_action(cur_state, is_game_mode=True)
+            action = dqn.choose_action(cur_state)
         else:
             action = np.random.randint(0, action_count)
         reward = 0
         for f in range(SAME_ACTION_STEP):
             n_s, _reward, _is_done, info = env.step(action + 1)
             env.render()
-            time.sleep(0.1)
+            time.sleep(0.02)
             n_s = transfer_observation(n_s)
             state_buffer.append(n_s)
             if _is_done:

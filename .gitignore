@@ -2,5 +2,5 @@ logs
 log
 .idea
 .DS_strore
-.pyc
+*.pyc
 .pytest*
