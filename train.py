@@ -107,7 +107,8 @@ def do_train():
                 dqn.store(cur_state, action, reward, next_state, is_done)
             cur_state = next_state
             loss = dqn.learn(log_writer)
-            loss_sum += loss
+            if loss is not None:
+                loss_sum = loss_sum + loss
             # print("step: ", total_step, "reward: ", reward, "loss: ", loss)
             total_step += 1
             total_reward += reward
@@ -117,6 +118,8 @@ def do_train():
               "loss: ", loss_sum / total_step
               )
         dqn.add_game_total_reward(total_reward)
+        if epoch % 20 == 0:
+            dqn.save_weight(WEIGHT_DATA_PATH)
     log_writer.close()
 
 

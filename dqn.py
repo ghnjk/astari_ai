@@ -47,9 +47,8 @@ class DQN(object):
         self.tf_q_real = None
         self.tf_loss = None
         # game estimate
-        self.est_avg_reward = None
-        self.est_game_count = 0
-        self.est_game_sum_reward = 0.0
+        self.tf_game_reward = None
+        self.est_game_reward = []
         # tf variables
         self.tf_eval_net_variables = None
         self.tf_target_net_variables = None
@@ -79,8 +78,7 @@ class DQN(object):
         self.data_count += 1
 
     def add_game_total_reward(self, r):
-        self.est_game_sum_reward += r
-        self.est_game_count += 1
+        self.est_game_reward.append(r)
 
     def learn(self, log_writer):
         if self.data_count < self.batch_size:
@@ -126,19 +124,16 @@ class DQN(object):
             }
         )
         if self.learn_counter % 5000 == 0:
-            if self.est_game_count > 0:
-                avg_r = self.est_game_sum_reward / self.est_game_count
-            else:
-                avg_r = 0.0
             # add sumary
             summaries = self.sess.run(self.tf_summaries, feed_dict={
                 self.tf_cur_state: cur_state,
                 self.tf_next_state: next_state,
                 self.tf_q_target: q_target,
                 self.tf_action: action,
-                self.est_avg_reward: np.array([avg_r])
+                self.tf_game_reward: np.array(self.est_game_reward)
             })
             log_writer.add_summary(summaries, self.learn_counter)
+            self.est_game_reward = []
         if self.choose_e_greedy_increase is not None:
             self.choose_random_rate += self.choose_e_greedy_increase
             if self.choose_random_rate > self.choose_e_greedy:
@@ -177,10 +172,12 @@ class DQN(object):
                 tf.assign(t, e) for t, e in zip(self.tf_target_net_variables, self.tf_eval_net_variables)
             ]
 
-        self.est_avg_reward = tf.placeholder(tf.float32, [1], name="estimate_game_reward")
+        with tf.variable_scope("game_avg_reward"):
+            self.tf_game_reward = tf.placeholder(tf.float32, shape=(None, ), name="game_reward_list")
+            avg_game_reward = tf.reduce_mean(self.tf_game_reward)
 
         self.tf_summaries = tf.summary.merge([
-            tf.summary.scalar("game_avg_reward", self.est_avg_reward),
+            tf.summary.scalar("game_avg_reward", avg_game_reward),
             tf.summary.scalar("loss", self.tf_loss),
             tf.summary.histogram("loss_hist", self.tf_loss),
             tf.summary.histogram("q_values_hist", self.tf_q_eval),
