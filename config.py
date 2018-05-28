@@ -1,21 +1,17 @@
 #!/usr/bin/python
 # -*- coding: UTF-8 -*-
+import json
+import argparse
 
-game_config = {
-    "GAME_NAME": "Breakout-v0",
-    "SAME_ACTION_STEP": 1,
-    "TIME_STEP_AS_STATE": 4,
-    "IMAGE_HEIGHT": 84,
-    "IMAGE_WIDTH": 84,
-    "IS_DUEL": True,
-    "WEIGHT_DATA_PATH": "data/duel_dqn_weights/duel_dqn_weights.ckpt",
-    "LOG_PATH": "logs/duel_dqn"
-}
 
-train_config = {
-    "MEMORY_SIZE": 50000,
-    "BATCH_SIZE": 64,
-    "UPDATE_TARGET_ITER": 10000,
-    "LEARNING_RATE": 0.0002,
-    "CHOOSE_E_GREEDY_INCREASEMENT": 0.00002
-}
+def load_config():
+    parser = argparse.ArgumentParser(description='astari ai')
+    parser.add_argument("mode", choices=["game", "train"], help="play game or train")
+    parser.add_argument("config", help="json config file path")
+    args = parser.parse_args()
+    with open(args.config, "r") as fp:
+        config_map = json.load(fp)
+        return args.mode, config_map["game"], config_map["train"]
+
+
+run_mode, game_config, train_config = load_config()

@@ -8,7 +8,9 @@ from dqn import DQN
 from collections import deque
 import cv2
 import os
-from config import game_config, train_config
+import time
+from config import game_config, train_config, run_mode
+
 
 # 基本的state shape为(210, 160, 3)
 # 为了增加时间序， 我们将3个帧的state拼起来作为state
@@ -54,10 +56,14 @@ def transfer_observation(s):
 
 
 def do_train():
-    if not os.path.exists(WEIGHT_DATA_PATH):
-        os.makedirs(os.path.dirname(WEIGHT_DATA_PATH))
+    if not os.path.isdir(WEIGHT_DATA_PATH):
+        os.makedirs(WEIGHT_DATA_PATH)
+    model_weight = os.path.join(WEIGHT_DATA_PATH, "model_weight.ckpt")
     env = gym.make(game_config["GAME_NAME"])
-    action_count = env.action_space.n - 1
+    if game_config["GAME_NAME"] == "Breakout-v0":
+        action_count = env.action_space.n - 1
+    else:
+        action_count = env.action_space.n
     sess = tf.Session()
     dqn = DQN(
         sess=sess,
@@ -74,10 +80,10 @@ def do_train():
     log_writer = tf.summary.FileWriter(log_dir, sess.graph)
     sess.run(tf.global_variables_initializer())
     try:
-        dqn.load_weights(WEIGHT_DATA_PATH)
-        print("load weights from [%s] success." % WEIGHT_DATA_PATH)
+        dqn.load_weights(model_weight)
+        print("load weights from [%s] success." % model_weight)
     except Exception as e:
-        print("load weights from [%s] failed: %s" % (WEIGHT_DATA_PATH, e.message))
+        print("load weights from [%s] failed: %s" % (model_weight, e.message))
         print("init ddqn as random weights.")
     sumary()
     for epoch in range(50000):
@@ -96,9 +102,13 @@ def do_train():
                 action = dqn.choose_action(cur_state)
             else:
                 action = np.random.randint(0, action_count)
+            if game_config["GAME_NAME"] == "Breakout-v0":
+                real_act = action + 1
+            else:
+                real_act = action
             reward = 0
             for f in range(SAME_ACTION_STEP):
-                n_s, _reward, _is_done, info = env.step(action + 1)
+                n_s, _reward, _is_done, info = env.step(real_act)
                 n_s = transfer_observation(n_s)
                 state_buffer.append(n_s)
                 if _is_done:
@@ -122,9 +132,66 @@ def do_train():
               )
         dqn.add_game_total_reward(total_reward)
         if epoch % 20 == 0:
-            dqn.save_weight(WEIGHT_DATA_PATH)
+            dqn.save_weight(model_weight)
     log_writer.close()
 
 
+def boot_game():
+    model_weight = os.path.join(WEIGHT_DATA_PATH, "model_weight.ckpt")
+    env = gym.make(game_config["GAME_NAME"])
+    if game_config["GAME_NAME"] == "Breakout-v0":
+        action_count = env.action_space.n - 1
+    else:
+        action_count = env.action_space.n
+    sess = tf.Session()
+    dqn = DQN(
+        sess=sess,
+        feature_shape=[None, IMAGE_HEIGHT, IMAGE_WIDTH, TIME_STEP_AS_STATE],
+        action_count=action_count,
+        choose_e_greedy=0.95,
+        choose_e_greedy_increase=None,
+        is_duel=game_config["IS_DUEL"]
+    )
+    sess.run(tf.global_variables_initializer())
+    dqn.load_weights(model_weight)
+    is_done = False
+    s = env.reset()
+    s = transfer_observation(s)
+    state_buffer = deque(maxlen=TIME_STEP_AS_STATE)
+    state_buffer.append(s)
+    cur_state = None
+    next_state = None
+    total_reward = 0
+    total_step = 0
+    while not is_done:
+        if cur_state is not None:
+            action = dqn.choose_action(cur_state)
+        else:
+            action = np.random.randint(0, action_count)
+        if game_config["GAME_NAME"] == "Breakout-v0":
+            real_act = action + 1
+        else:
+            real_act = action
+        reward = 0
+        for f in range(SAME_ACTION_STEP):
+            n_s, _reward, _is_done, info = env.step(real_act)
+            env.render()
+            time.sleep(0.02)
+            n_s = transfer_observation(n_s)
+            state_buffer.append(n_s)
+            if _is_done:
+                is_done = True
+            reward += _reward
+        if len(state_buffer) >= TIME_STEP_AS_STATE:
+            next_state = combine_state(state_buffer)
+        cur_state = next_state
+        total_step += 1
+        total_reward += reward
+    print("game over. total_step: ", total_step, "total_reward: ", total_reward)
+
+
 if __name__ == '__main__':
-    do_train()
+    if run_mode == "train":
+        do_train()
+    else:
+        boot_game()

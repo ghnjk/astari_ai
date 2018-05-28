@@ -164,7 +164,7 @@ class DQN(object):
 
         with tf.variable_scope("train"):
             self.tf_train_op = tf.train.RMSPropOptimizer(
-                self.learning_rate, decay=0.99, momentum=0.0, epsilon=1e-6
+                self.learning_rate
             ).minimize(self.tf_loss)
 
         self.tf_eval_net_variables = tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope="eval_net")
@@ -223,18 +223,12 @@ class DQN(object):
                         inputs=layer_conv2d_3,
                         name="flatter_layer"
                     )
-                    dense_layer = tf.layers.dense(
-                        inputs=flattten_layer,
-                        units=512,
-                        activation=None,
-                        name="dense_layer"
-                    )
-                tf_img_feature = dense_layer
+                tf_img_feature = flattten_layer
             if self.is_duel:
                 with tf.variable_scope("value_layers"):
                     value_layer = tf.layers.dense(
                         inputs=tf_img_feature,
-                        units=64,
+                        units=512,
                         activation=tf.nn.relu,
                         name="value_dense_1"
                     )
@@ -247,7 +241,7 @@ class DQN(object):
                 with tf.variable_scope("action_advantage"):
                     advatage_layer = tf.layers.dense(
                         inputs=tf_img_feature,
-                        units=64,
+                        units=512,
                         activation=tf.nn.relu,
                         name="advatage_dense_1"
                     )
@@ -262,8 +256,14 @@ class DQN(object):
                         advatage_layer, reduction_indices=1, keep_dims=True
                     ))
             else:
+                dense_layer = tf.layers.dense(
+                    inputs=tf_img_feature,
+                    units=512,
+                    activation=tf.nn.relu,
+                    name="dense_layer"
+                )
                 q = tf.layers.dense(
-                        inputs=tf_img_feature,
+                        inputs=dense_layer,
                         units=self.action_count,
                         activation=None,
                         name="prediction_layer"
