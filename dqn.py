@@ -15,10 +15,11 @@ class DQN(object):
                  memory_size=10000,
                  batch_size=32,
                  update_network_iter=10000,
-                 learning_rate=0.001,
+                 learning_rate=0.00025,
                  reward_decay=0.99,
                  choose_e_greedy=0.9,
-                 choose_e_greedy_increase=None):
+                 choose_e_greedy_increase=None,
+                 is_duel=False):
         self.sess = sess
         self.feature_shape = feature_shape
         self.action_count = action_count
@@ -36,6 +37,7 @@ class DQN(object):
             self.choose_random_rate = 0
         self.data_count = 0
         self.learn_counter = 0
+        self.is_duel = is_duel
 
         # tf inputs
         self.tf_cur_state = None
@@ -123,7 +125,7 @@ class DQN(object):
                 self.tf_action: action
             }
         )
-        if self.learn_counter % 5000 == 0:
+        if self.learn_counter % 10000 == 0:
             # add sumary
             summaries = self.sess.run(self.tf_summaries, feed_dict={
                 self.tf_cur_state: cur_state,
@@ -144,8 +146,8 @@ class DQN(object):
 
     def _build_net(self):
         with tf.name_scope("inputs"):
-            self.tf_cur_state = tf.placeholder(tf.float32, self.feature_shape, name="cur_state")
-            self.tf_next_state = tf.placeholder(tf.float32, self.feature_shape, name="next_state")
+            self.tf_cur_state = tf.placeholder(tf.uint8, self.feature_shape, name="cur_state")
+            self.tf_next_state = tf.placeholder(tf.uint8, self.feature_shape, name="next_state")
             self.tf_q_target = tf.placeholder(tf.float32, [None, ], name="q_target")
             self.tf_action = tf.placeholder(tf.int32, [None, ], name="action")
 
@@ -162,7 +164,7 @@ class DQN(object):
 
         with tf.variable_scope("train"):
             self.tf_train_op = tf.train.RMSPropOptimizer(
-                self.learning_rate,
+                self.learning_rate, decay=0.99, momentum=0.0, epsilon=1e-6
             ).minimize(self.tf_loss)
 
         self.tf_eval_net_variables = tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope="eval_net")
@@ -187,9 +189,10 @@ class DQN(object):
     def _build_q_net(self, inputs, scope):
         with tf.variable_scope(scope):
             with tf.variable_scope("image_feature"):
+                normal_img = tf.to_float(inputs) / 256.0
                 with tf.variable_scope("conv2d_layers"):
                     layer_conv2d_1 = tf.layers.conv2d(
-                        inputs=inputs,
+                        inputs=normal_img,
                         filters=32,
                         kernel_size=(8, 8),
                         strides=(4, 4),
@@ -215,7 +218,6 @@ class DQN(object):
                         activation=tf.nn.relu,
                         name="conv_layer_3"
                     )
-
                 with tf.variable_scope("dense_layer_1"):
                     flattten_layer = tf.layers.flatten(
                         inputs=layer_conv2d_3,
@@ -228,12 +230,44 @@ class DQN(object):
                         name="dense_layer"
                     )
                 tf_img_feature = dense_layer
-            q = tf.layers.dense(
-                    inputs=tf_img_feature,
-                    units=self.action_count,
-                    activation=None,
-                    name="prediction_layer"
-                )
+            if self.is_duel:
+                with tf.variable_scope("value_layers"):
+                    value_layer = tf.layers.dense(
+                        inputs=tf_img_feature,
+                        units=64,
+                        activation=tf.nn.relu,
+                        name="value_dense_1"
+                    )
+                    value_layer = tf.layers.dense(
+                        inputs=value_layer,
+                        units=1,
+                        activation=None,
+                        name="state_value"
+                    )
+                with tf.variable_scope("action_advantage"):
+                    advatage_layer = tf.layers.dense(
+                        inputs=tf_img_feature,
+                        units=64,
+                        activation=tf.nn.relu,
+                        name="advatage_dense_1"
+                    )
+                    advatage_layer = tf.layers.dense(
+                        inputs=advatage_layer,
+                        units=self.action_count,
+                        activation=None,
+                        name="action_advantage"
+                    )
+                with tf.variable_scope("duel_q"):
+                    q = value_layer + (advatage_layer - tf.reduce_mean(
+                        advatage_layer, reduction_indices=1, keep_dims=True
+                    ))
+            else:
+                q = tf.layers.dense(
+                        inputs=tf_img_feature,
+                        units=self.action_count,
+                        activation=None,
+                        name="prediction_layer"
+                    )
         return q
 
     def save_weight(self, weight_path):

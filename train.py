@@ -7,15 +7,16 @@ import gym
 from dqn import DQN
 from collections import deque
 import cv2
-
+import os
+from config import game_config, train_config
 
 # 基本的state shape为(210, 160, 3)
 # 为了增加时间序， 我们将3个帧的state拼起来作为state
-SAME_ACTION_STEP = 1
-TIME_STEP_AS_STATE = 4
-IMAGE_HEIGHT = 84
-IMAGE_WIDTH = 84
-WEIGHT_DATA_PATH = "data/model_weights/dqn_weights.ckpt"
+SAME_ACTION_STEP = game_config["SAME_ACTION_STEP"]
+TIME_STEP_AS_STATE = game_config["TIME_STEP_AS_STATE"]
+IMAGE_HEIGHT = game_config["IMAGE_HEIGHT"]
+IMAGE_WIDTH = game_config["IMAGE_WIDTH"]
+WEIGHT_DATA_PATH = game_config["WEIGHT_DATA_PATH"]
 
 
 def set_rand_seed(seed):
@@ -49,25 +50,27 @@ def combine_state(state_buffer):
 def transfer_observation(s):
     s = s[25: -12, :, :]
     s = cv2.resize(cv2.cvtColor(s, cv2.COLOR_RGB2GRAY), (IMAGE_HEIGHT, IMAGE_WIDTH))
-    s = s / 256.0
-    return s
+    return np.array(s, dtype=np.uint8)
 
 
 def do_train():
-    env = gym.make("Breakout-v0")
+    if not os.path.exists(WEIGHT_DATA_PATH):
+        os.makedirs(os.path.dirname(WEIGHT_DATA_PATH))
+    env = gym.make(game_config["GAME_NAME"])
     action_count = env.action_space.n - 1
     sess = tf.Session()
     dqn = DQN(
         sess=sess,
         feature_shape=[None, IMAGE_HEIGHT, IMAGE_WIDTH, TIME_STEP_AS_STATE],
         action_count=action_count,
-        memory_size=30000,
-        batch_size=32,
-        update_network_iter=5000,
-        # choose_e_greedy_increase=0.00002,
-        learning_rate=0.0002
+        memory_size=train_config["MEMORY_SIZE"],
+        batch_size=train_config["BATCH_SIZE"],
+        update_network_iter=train_config["UPDATE_TARGET_ITER"],
+        choose_e_greedy_increase=train_config["CHOOSE_E_GREEDY_INCREASEMENT"],
+        learning_rate=train_config["LEARNING_RATE"],
+        is_duel=game_config["IS_DUEL"]
     )
-    log_dir = "logs"
+    log_dir = game_config["LOG_PATH"]
     log_writer = tf.summary.FileWriter(log_dir, sess.graph)
     sess.run(tf.global_variables_initializer())
     try:
@@ -77,7 +80,7 @@ def do_train():
         print("load weights from [%s] failed: %s" % (WEIGHT_DATA_PATH, e.message))
         print("init ddqn as random weights.")
     sumary()
-    for epoch in range(5000):
+    for epoch in range(50000):
         s = env.reset()
         s = transfer_observation(s)
         state_buffer = deque(maxlen=TIME_STEP_AS_STATE)
