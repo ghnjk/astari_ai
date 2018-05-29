@@ -1,13 +1,13 @@
 {
   "game": {
-    "game_name": "Breakout-v0",
+    "game_name": "SpaceInvaders-v0",
     "same_action_step": 1,
     "time_step_as_state": 4,
     "image_height": 84,
     "image_width": 84,
     "is_duel": false,
-    "weight_data_path": "data/dqn_weights",
-    "log_path": "logs/dqn"
+    "weight_data_path": "data/space_dqn_weights",
+    "log_path": "logs/space_dqn"
   },
   "train": {
     "relay_memory_size": 100000,

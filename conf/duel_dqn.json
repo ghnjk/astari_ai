@@ -1,19 +1,20 @@
 {
   "game": {
-    "GAME_NAME": "Breakout-v0",
-    "SAME_ACTION_STEP": 1,
-    "TIME_STEP_AS_STATE": 4,
-    "IMAGE_HEIGHT": 84,
-    "IMAGE_WIDTH": 84,
-    "IS_DUEL": true,
-    "WEIGHT_DATA_PATH": "data/duel_dqn_weights",
-    "LOG_PATH": "logs/duel_dqn"
+    "game_name": "Breakout-v0",
+    "same_action_step": 1,
+    "time_step_as_state": 4,
+    "image_height": 84,
+    "image_width": 84,
+    "is_duel": true,
+    "weight_data_path": "data/duel_dqn_weights",
+    "log_path": "logs/duel_dqn"
   },
   "train": {
-    "MEMORY_SIZE": 100000,
-    "BATCH_SIZE": 32,
-    "UPDATE_TARGET_ITER": 10000,
-    "LEARNING_RATE": 0.0002,
-    "CHOOSE_E_GREEDY_INCREASEMENT": 0.00001
+    "relay_memory_size": 100000,
+    "batch_size": 32,
+    "update_target_net_per_iter": 10000,
+    "learning_rate": 0.00025,
+    "choose_e_greedy_increase": 0.00001,
+    "train_epoch": 50000
   }
 }

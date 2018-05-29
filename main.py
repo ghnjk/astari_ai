@@ -14,11 +14,14 @@ from config import game_config, train_config, run_mode
 
 # 基本的state shape为(210, 160, 3)
 # 为了增加时间序， 我们将3个帧的state拼起来作为state
-SAME_ACTION_STEP = game_config["SAME_ACTION_STEP"]
-TIME_STEP_AS_STATE = game_config["TIME_STEP_AS_STATE"]
-IMAGE_HEIGHT = game_config["IMAGE_HEIGHT"]
-IMAGE_WIDTH = game_config["IMAGE_WIDTH"]
-WEIGHT_DATA_PATH = game_config["WEIGHT_DATA_PATH"]
+SAME_ACTION_STEP = game_config["same_action_step"]
+TIME_STEP_AS_STATE = game_config["time_step_as_state"]
+IMAGE_HEIGHT = game_config["image_height"]
+IMAGE_WIDTH = game_config["image_width"]
+WEIGHT_DATA_PATH = game_config["weight_data_path"]
+GAME_NAME = game_config["game_name"]
+IS_DUEL = game_config["is_duel"]
+LOG_PATH = game_config["log_path"]
 
 
 def set_rand_seed(seed):
@@ -59,8 +62,8 @@ def do_train():
     if not os.path.isdir(WEIGHT_DATA_PATH):
         os.makedirs(WEIGHT_DATA_PATH)
     model_weight = os.path.join(WEIGHT_DATA_PATH, "model_weight.ckpt")
-    env = gym.make(game_config["GAME_NAME"])
-    if game_config["GAME_NAME"] == "Breakout-v0":
+    env = gym.make(GAME_NAME)
+    if GAME_NAME == "Breakout-v0":
         action_count = env.action_space.n - 1
     else:
         action_count = env.action_space.n
@@ -69,15 +72,14 @@ def do_train():
         sess=sess,
         feature_shape=[None, IMAGE_HEIGHT, IMAGE_WIDTH, TIME_STEP_AS_STATE],
         action_count=action_count,
-        memory_size=train_config["MEMORY_SIZE"],
-        batch_size=train_config["BATCH_SIZE"],
-        update_network_iter=train_config["UPDATE_TARGET_ITER"],
-        choose_e_greedy_increase=train_config["CHOOSE_E_GREEDY_INCREASEMENT"],
-        learning_rate=train_config["LEARNING_RATE"],
-        is_duel=game_config["IS_DUEL"]
+        memory_size=train_config["relay_memory_size"],
+        batch_size=train_config["batch_size"],
+        update_network_iter=train_config["update_target_net_per_iter"],
+        choose_e_greedy_increase=train_config["choose_e_greedy_increase"],
+        learning_rate=train_config["learning_rate"],
+        is_duel=IS_DUEL
     )
-    log_dir = game_config["LOG_PATH"]
-    log_writer = tf.summary.FileWriter(log_dir, sess.graph)
+    log_writer = tf.summary.FileWriter(LOG_PATH, sess.graph)
     sess.run(tf.global_variables_initializer())
     try:
         dqn.load_weights(model_weight)
@@ -86,7 +88,7 @@ def do_train():
         print("load weights from [%s] failed: %s" % (model_weight, e.message))
         print("init ddqn as random weights.")
     sumary()
-    for epoch in range(50000):
+    for epoch in range(train_config["train_epoch"]):
         s = env.reset()
         s = transfer_observation(s)
         state_buffer = deque(maxlen=TIME_STEP_AS_STATE)
@@ -102,7 +104,7 @@ def do_train():
                 action = dqn.choose_action(cur_state)
             else:
                 action = np.random.randint(0, action_count)
-            if game_config["GAME_NAME"] == "Breakout-v0":
+            if GAME_NAME == "Breakout-v0":
                 real_act = action + 1
             else:
                 real_act = action
@@ -131,15 +133,21 @@ def do_train():
               "loss: ", loss_sum / total_step
               )
         dqn.add_game_total_reward(total_reward)
-        if epoch % 20 == 0:
+        if epoch % 500 == 0:
             dqn.save_weight(model_weight)
+            backup = os.path.join("data/backup", str(epoch))
+            if not os.path.exists(backup):
+                os.makedirs(backup)
+            backup = os.path.join(backup, "model_weight.ckpt")
+            dqn.save_weight(backup)
     log_writer.close()
 
 
 def boot_game():
+    os.environ["CUDA_VISIBLE_DEVICES"] = ""
     model_weight = os.path.join(WEIGHT_DATA_PATH, "model_weight.ckpt")
-    env = gym.make(game_config["GAME_NAME"])
-    if game_config["GAME_NAME"] == "Breakout-v0":
+    env = gym.make(GAME_NAME)
+    if GAME_NAME == "Breakout-v0":
         action_count = env.action_space.n - 1
     else:
         action_count = env.action_space.n
@@ -150,7 +158,7 @@ def boot_game():
         action_count=action_count,
         choose_e_greedy=0.95,
         choose_e_greedy_increase=None,
-        is_duel=game_config["IS_DUEL"]
+        is_duel=IS_DUEL
     )
     sess.run(tf.global_variables_initializer())
     dqn.load_weights(model_weight)
@@ -168,7 +176,7 @@ def boot_game():
             action = dqn.choose_action(cur_state)
         else:
             action = np.random.randint(0, action_count)
-        if game_config["GAME_NAME"] == "Breakout-v0":
+        if GAME_NAME == "Breakout-v0":
             real_act = action + 1
         else:
             real_act = action

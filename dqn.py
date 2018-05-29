@@ -164,7 +164,7 @@ class DQN(object):
 
         with tf.variable_scope("train"):
             self.tf_train_op = tf.train.RMSPropOptimizer(
-                self.learning_rate
+                self.learning_rate, momentum=0.95, epsilon=0.01
             ).minimize(self.tf_loss)
 
         self.tf_eval_net_variables = tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope="eval_net")
@@ -177,9 +177,13 @@ class DQN(object):
         with tf.variable_scope("game_avg_reward"):
             self.tf_game_reward = tf.placeholder(tf.float32, shape=(None, ), name="game_reward_list")
             avg_game_reward = tf.reduce_mean(self.tf_game_reward)
+            max_game_reward = tf.reduce_max(self.tf_game_reward)
+            min_game_reward = tf.reduce_min(self.tf_game_reward)
 
         self.tf_summaries = tf.summary.merge([
             tf.summary.scalar("game_avg_reward", avg_game_reward),
+            tf.summary.scalar("game_max_reward", max_game_reward),
+            tf.summary.scalar("game_min_reward", min_game_reward),
             tf.summary.scalar("loss", self.tf_loss),
             tf.summary.histogram("loss_hist", self.tf_loss),
             tf.summary.histogram("q_values_hist", self.tf_q_eval),
