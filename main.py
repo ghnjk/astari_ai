@@ -77,6 +77,7 @@ def do_train():
         update_network_iter=train_config["update_target_net_per_iter"],
         choose_e_greedy_increase=train_config["choose_e_greedy_increase"],
         learning_rate=train_config["learning_rate"],
+        min_learning_rate=train_config["min_learning_rate"],
         is_duel=IS_DUEL
     )
     log_writer = tf.summary.FileWriter(LOG_PATH, sess.graph)
@@ -121,9 +122,10 @@ def do_train():
             if cur_state is not None and next_state is not None:
                 dqn.store(cur_state, action, reward, next_state, is_done)
             cur_state = next_state
-            loss = dqn.learn(log_writer)
-            if loss is not None:
-                loss_sum = loss_sum + loss
+            if dqn.data_count >= train_config["learning_start"]:
+                loss = dqn.learn(log_writer)
+                if loss is not None:
+                    loss_sum = loss_sum + loss
             # print("step: ", total_step, "reward: ", reward, "loss: ", loss)
             total_step += 1
             total_reward += reward

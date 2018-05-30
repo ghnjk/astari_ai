@@ -6,15 +6,18 @@
     "image_height": 84,
     "image_width": 84,
     "is_duel": false,
+    "is_double_dqn": false,
     "weight_data_path": "data/dqn_weights",
     "log_path": "logs/dqn"
   },
   "train": {
-    "relay_memory_size": 100000,
+    "relay_memory_size": 200000,
     "batch_size": 32,
     "update_target_net_per_iter": 10000,
-    "learning_rate": 0.00025,
-    "choose_e_greedy_increase": 0.00001,
+    "learning_rate": 0.0025,
+    "min_learning_rate": 0.00025,
+    "learning_start": 50000,
+    "choose_e_greedy_increase": 0.000002,
     "train_epoch": 50000
   }
 }

@@ -15,15 +15,22 @@ class DQN(object):
                  memory_size=10000,
                  batch_size=32,
                  update_network_iter=10000,
-                 learning_rate=0.00025,
                  reward_decay=0.99,
                  choose_e_greedy=0.9,
                  choose_e_greedy_increase=None,
-                 is_duel=False):
+                 learning_rate=0.0025,
+                 min_learning_rate=0.00025,
+                 learning_rate_decay=0.96,
+                 learning_rate_decay_step=50000,
+                 is_duel=False,
+                 is_double_dqn=False):
         self.sess = sess
         self.feature_shape = feature_shape
         self.action_count = action_count
         self.learning_rate = learning_rate
+        self.learning_rate_decay = learning_rate_decay
+        self.learning_rate_decay_step = learning_rate_decay_step
+        self.minimum_learning_rate = min_learning_rate
         self.reward_decay = reward_decay
         self.choose_e_greedy = choose_e_greedy
         self.choose_e_greedy_increase = choose_e_greedy_increase
@@ -38,16 +45,19 @@ class DQN(object):
         self.data_count = 0
         self.learn_counter = 0
         self.is_duel = is_duel
+        self.is_double_dqn = is_double_dqn
 
         # tf inputs
         self.tf_cur_state = None
         self.tf_q_target = None
         self.tf_next_state = None
         self.tf_action = None
+        self.tf_learning_step = None
         # tf outputs
         self.tf_q_eval = None
         self.tf_q_real = None
         self.tf_loss = None
+        self.tf_cur_learning_rate = None
         # game estimate
         self.tf_game_reward = None
         self.est_game_reward = []
@@ -103,26 +113,46 @@ class DQN(object):
             next_state.append(item[3])
             is_done.append(item[4])
 
-        q_real = self.sess.run(
-            self.tf_q_real,
-            feed_dict={
-                self.tf_next_state: next_state
-            }
-        )
-        # 计算q_target = reward + reward_decay * max(q_real)
-        q_target = np.zeros(shape=self.batch_size)
-        for idx in range(self.batch_size):
-            if is_done[idx]:
-                q_target[idx] = reward[idx]
-            else:
-                q_target[idx] = reward[idx] + self.reward_decay * np.max(q_real[idx])
+        if self.is_double_dqn:
+            q_real, q_eval4next = self.sess.run(
+                [self.tf_q_real, self.tf_q_eval],
+                feed_dict={
+                    self.tf_next_state: next_state,
+                    self.tf_cur_state: next_state
+                }
+            )
+            # q_eval4next 得出的最高奖励动作
+            max_act4next = np.argmax(q_eval4next, axis=1)
+            # 计算q_target = reward + reward_decay * max(q_real)
+            q_target = np.zeros(shape=self.batch_size)
+            for idx in range(self.batch_size):
+                if is_done[idx]:
+                    q_target[idx] = reward[idx]
+                else:
+                    best_act = max_act4next[idx]
+                    q_target[idx] = reward[idx] + self.reward_decay * q_real[idx][best_act]
+        else:
+            q_real = self.sess.run(
+                self.tf_q_real,
+                feed_dict={
+                    self.tf_next_state: next_state
+                }
+            )
+            # 计算q_target = reward + reward_decay * max(q_real)
+            q_target = np.zeros(shape=self.batch_size)
+            for idx in range(self.batch_size):
+                if is_done[idx]:
+                    q_target[idx] = reward[idx]
+                else:
+                    q_target[idx] = reward[idx] + self.reward_decay * np.max(q_real[idx])
 
         _, loss = self.sess.run(
             [self.tf_train_op, self.tf_loss],
             feed_dict={
                 self.tf_cur_state: cur_state,
                 self.tf_q_target: q_target,
-                self.tf_action: action
+                self.tf_action: action,
+                self.tf_learning_step: self.learn_counter
             }
         )
         if self.learn_counter % 10000 == 0:
@@ -132,7 +162,8 @@ class DQN(object):
                 self.tf_next_state: next_state,
                 self.tf_q_target: q_target,
                 self.tf_action: action,
-                self.tf_game_reward: np.array(self.est_game_reward)
+                self.tf_game_reward: np.array(self.est_game_reward),
+                self.tf_learning_step: self.learn_counter
             })
             log_writer.add_summary(summaries, self.learn_counter)
             self.est_game_reward = []
@@ -162,9 +193,22 @@ class DQN(object):
         with tf.variable_scope("loss"):
             self.tf_loss = tf.reduce_mean(tf.squared_difference(self.tf_q_target, evaluate_q))
 
+        with tf.variable_scope("learning_rate"):
+            self.tf_learning_step = tf.placeholder(tf.int32, None, name="learning_step")
+            self.tf_cur_learning_rate = tf.maximum(
+                self.minimum_learning_rate,
+                tf.train.exponential_decay(
+                    self.learning_rate,
+                    self.tf_learning_step,
+                    self.learning_rate_decay_step,
+                    self.learning_rate_decay,
+                    staircase=True
+                )
+            )
+
         with tf.variable_scope("train"):
             self.tf_train_op = tf.train.RMSPropOptimizer(
-                self.learning_rate, momentum=0.95, epsilon=0.01
+                self.tf_cur_learning_rate, momentum=0.95, epsilon=0.01
             ).minimize(self.tf_loss)
 
         self.tf_eval_net_variables = tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope="eval_net")
@@ -179,15 +223,19 @@ class DQN(object):
             avg_game_reward = tf.reduce_mean(self.tf_game_reward)
             max_game_reward = tf.reduce_max(self.tf_game_reward)
             min_game_reward = tf.reduce_min(self.tf_game_reward)
+            episode_num_game = tf.shape(self.tf_game_reward)[0]
 
         self.tf_summaries = tf.summary.merge([
             tf.summary.scalar("game_avg_reward", avg_game_reward),
             tf.summary.scalar("game_max_reward", max_game_reward),
             tf.summary.scalar("game_min_reward", min_game_reward),
-            tf.summary.scalar("loss", self.tf_loss),
+            tf.summary.scalar("episode_num_game", episode_num_game),
+            tf.summary.scalar("learning_rate", self.tf_cur_learning_rate),
+            tf.summary.scalar("td_error_loss", self.tf_loss),
             tf.summary.histogram("loss_hist", self.tf_loss),
             tf.summary.histogram("q_values_hist", self.tf_q_eval),
-            tf.summary.scalar("max_q_value", tf.reduce_max(self.tf_q_eval))
+            tf.summary.scalar("max_q_value", tf.reduce_max(self.tf_q_eval)),
+            tf.summary.scalar("avg_q_value", tf.reduce_mean(self.tf_q_eval))
         ])
 
     def _build_q_net(self, inputs, scope):
@@ -267,11 +315,11 @@ class DQN(object):
                     name="dense_layer"
                 )
                 q = tf.layers.dense(
-                        inputs=dense_layer,
-                        units=self.action_count,
-                        activation=None,
-                        name="prediction_layer"
-                    )
+                    inputs=dense_layer,
+                    units=self.action_count,
+                    activation=None,
+                    name="prediction_layer"
+                )
         return q
 
     def save_weight(self, weight_path):
