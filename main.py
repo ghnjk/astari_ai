@@ -63,6 +63,7 @@ def do_train():
         os.makedirs(WEIGHT_DATA_PATH)
     model_weight = os.path.join(WEIGHT_DATA_PATH, "model_weight.ckpt")
     env = gym.make(GAME_NAME)
+    env = env.unwrapped
     if GAME_NAME == "Breakout-v0":
         action_count = env.action_space.n - 1
     else:
@@ -110,6 +111,7 @@ def do_train():
             else:
                 real_act = action
             reward = 0
+            pre_lives = env.ale.lives()
             for f in range(SAME_ACTION_STEP):
                 n_s, _reward, _is_done, info = env.step(real_act)
                 n_s = transfer_observation(n_s)
@@ -117,15 +119,31 @@ def do_train():
                 if _is_done:
                     is_done = True
                 reward += _reward
+            if env.ale.lives() < pre_lives:
+                loss_life = True
+            else:
+                loss_life = False
+            reward = np.clip(reward, -1, 1)
             if len(state_buffer) >= TIME_STEP_AS_STATE:
                 next_state = combine_state(state_buffer)
             if cur_state is not None and next_state is not None:
-                dqn.store(cur_state, action, reward, next_state, is_done)
+                if is_done or loss_life:
+                    turn_is_done = True
+                else:
+                    turn_is_donw = False
+                dqn.store(cur_state, action, reward, next_state, turn_is_donw)
             cur_state = next_state
             if dqn.data_count >= train_config["learning_start"]:
                 loss = dqn.learn(log_writer)
                 if loss is not None:
                     loss_sum = loss_sum + loss
+            if dqn.data_count % 100000 == 0:
+                dqn.save_weight(model_weight)
+                backup = os.path.join("data/backup", str(dqn.data_count))
+                if not os.path.exists(backup):
+                    os.makedirs(backup)
+                backup = os.path.join(backup, "model_weight.ckpt")
+                dqn.save_weight(backup)
             # print("step: ", total_step, "reward: ", reward, "loss: ", loss)
             total_step += 1
             total_reward += reward
@@ -135,20 +153,77 @@ def do_train():
               "loss: ", loss_sum / total_step
               )
         dqn.add_game_total_reward(total_reward)
-        if epoch % 500 == 0:
-            dqn.save_weight(model_weight)
-            backup = os.path.join("data/backup", str(epoch))
-            if not os.path.exists(backup):
-                os.makedirs(backup)
-            backup = os.path.join(backup, "model_weight.ckpt")
-            dqn.save_weight(backup)
     log_writer.close()
+
+
+def estimate():
+    # os.environ["CUDA_VISIBLE_DEVICES"] = ""
+    model_weight = os.path.join(WEIGHT_DATA_PATH, "model_weight.ckpt")
+    env = gym.make(GAME_NAME)
+    env = env.unwrapped
+    if GAME_NAME == "Breakout-v0":
+        action_count = env.action_space.n - 1
+    else:
+        action_count = env.action_space.n
+    sess = tf.Session()
+    dqn = DQN(
+        sess=sess,
+        feature_shape=[None, IMAGE_HEIGHT, IMAGE_WIDTH, TIME_STEP_AS_STATE],
+        action_count=action_count,
+        choose_e_greedy=0.95,
+        choose_e_greedy_increase=None,
+        is_duel=IS_DUEL
+    )
+    sess.run(tf.global_variables_initializer())
+    dqn.load_weights(model_weight)
+    reward_his = []
+    for i in range(100):
+        seed = random.randint(3, 10000)
+        set_rand_seed(seed)
+        env.seed(seed)
+        is_done = False
+        s = env.reset()
+        s = transfer_observation(s)
+        state_buffer = deque(maxlen=TIME_STEP_AS_STATE)
+        state_buffer.append(s)
+        cur_state = None
+        next_state = None
+        total_reward = 0
+        total_step = 0
+        while not is_done:
+            if cur_state is not None:
+                action = dqn.choose_action(cur_state)
+            else:
+                action = np.random.randint(0, action_count)
+            if GAME_NAME == "Breakout-v0":
+                real_act = action + 1
+            else:
+                real_act = action
+            reward = 0
+            for f in range(SAME_ACTION_STEP):
+                n_s, _reward, _is_done, info = env.step(real_act)
+                n_s = transfer_observation(n_s)
+                state_buffer.append(n_s)
+                if _is_done:
+                    is_done = True
+                reward += _reward
+            if len(state_buffer) >= TIME_STEP_AS_STATE:
+                next_state = combine_state(state_buffer)
+            cur_state = next_state
+            total_step += 1
+            total_reward += reward
+        print("epoch", i, "seed", seed, "game over. total_step: ", total_step, "total_reward: ", total_reward)
+        reward_his.append(total_reward)
+    print("estimate result: average reward: ", np.mean(reward_his))
 
 
 def boot_game():
     os.environ["CUDA_VISIBLE_DEVICES"] = ""
     model_weight = os.path.join(WEIGHT_DATA_PATH, "model_weight.ckpt")
     env = gym.make(GAME_NAME)
+    set_rand_seed(game_config["game_seed"])
+    env.seed(game_config["game_seed"])
+    env = env.unwrapped
     if GAME_NAME == "Breakout-v0":
         action_count = env.action_space.n - 1
     else:
@@ -203,5 +278,7 @@ def boot_game():
 if __name__ == '__main__':
     if run_mode == "train":
         do_train()
+    elif run_mode == "estimate":
+        estimate()
     else:
         boot_game()

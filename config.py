@@ -6,7 +6,7 @@ import argparse
 
 def load_config():
     parser = argparse.ArgumentParser(description='astari ai')
-    parser.add_argument("mode", choices=["game", "train"], help="play game or train")
+    parser.add_argument("mode", choices=["game", "train", "estimate"], help="play game or train")
     parser.add_argument("config", help="json config file path")
     args = parser.parse_args()
     with open(args.config, "r") as fp:

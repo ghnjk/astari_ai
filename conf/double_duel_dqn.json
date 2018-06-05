@@ -7,17 +7,18 @@
     "image_width": 84,
     "is_duel": true,
     "is_double_dqn": true,
+    "game_seed": 8292,
     "weight_data_path": "data/double_duel_dqn_weights",
     "log_path": "logs/double_duel_dqn"
   },
   "train": {
-    "relay_memory_size": 200000,
+    "relay_memory_size": 500000,
     "batch_size": 32,
     "update_target_net_per_iter": 10000,
     "learning_rate": 0.0025,
     "min_learning_rate": 0.00025,
     "learning_start": 50000,
-    "choose_e_greedy_increase": 0.000001,
+    "choose_e_greedy_increase": 0.000002,
     "train_epoch": 50000
   }
 }

@@ -6,7 +6,7 @@ import cv2
 
 
 def test_space_invador_img():
-    env = gym.make("Breakout-v0")
+    env = gym.make("SpaceInvaders-v0")
     s = env.reset()
     print("observation shape: ", s.shape)
     plt.imshow(s)

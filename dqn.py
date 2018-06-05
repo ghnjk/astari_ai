@@ -16,12 +16,12 @@ class DQN(object):
                  batch_size=32,
                  update_network_iter=10000,
                  reward_decay=0.99,
-                 choose_e_greedy=0.9,
+                 choose_e_greedy=0.98,
                  choose_e_greedy_increase=None,
                  learning_rate=0.0025,
                  min_learning_rate=0.00025,
                  learning_rate_decay=0.96,
-                 learning_rate_decay_step=50000,
+                 learning_rate_decay_step=30000,
                  is_duel=False,
                  is_double_dqn=False):
         self.sess = sess
@@ -231,7 +231,7 @@ class DQN(object):
             tf.summary.scalar("game_min_reward", min_game_reward),
             tf.summary.scalar("episode_num_game", episode_num_game),
             tf.summary.scalar("learning_rate", self.tf_cur_learning_rate),
-            tf.summary.scalar("td_error_loss", self.tf_loss),
+            tf.summary.scalar("loss", self.tf_loss),
             tf.summary.histogram("loss_hist", self.tf_loss),
             tf.summary.histogram("q_values_hist", self.tf_q_eval),
             tf.summary.scalar("max_q_value", tf.reduce_max(self.tf_q_eval)),
@@ -240,6 +240,7 @@ class DQN(object):
 
     def _build_q_net(self, inputs, scope):
         with tf.variable_scope(scope):
+            initializer = tf.contrib.layers.xavier_initializer()
             with tf.variable_scope("image_feature"):
                 normal_img = tf.to_float(inputs) / 256.0
                 with tf.variable_scope("conv2d_layers"):
@@ -249,6 +250,8 @@ class DQN(object):
                         kernel_size=(8, 8),
                         strides=(4, 4),
                         padding="valid",
+                        kernel_initializer=initializer,
+                        bias_initializer=initializer,
                         activation=tf.nn.relu,
                         name="conv_layer_1"
                     )
@@ -258,6 +261,8 @@ class DQN(object):
                         kernel_size=(4, 4),
                         strides=(2, 2),
                         padding="valid",
+                        kernel_initializer=initializer,
+                        bias_initializer=initializer,
                         activation=tf.nn.relu,
                         name="conv_layer_2"
                     )
@@ -267,6 +272,8 @@ class DQN(object):
                         kernel_size=(3, 3),
                         strides=(1, 1),
                         padding="valid",
+                        kernel_initializer=initializer,
+                        bias_initializer=initializer,
                         activation=tf.nn.relu,
                         name="conv_layer_3"
                     )
@@ -281,6 +288,8 @@ class DQN(object):
                     value_layer = tf.layers.dense(
                         inputs=tf_img_feature,
                         units=512,
+                        kernel_initializer=initializer,
+                        bias_initializer=initializer,
                         activation=tf.nn.relu,
                         name="value_dense_1"
                     )
@@ -288,6 +297,8 @@ class DQN(object):
                         inputs=value_layer,
                         units=1,
                         activation=None,
+                        kernel_initializer=initializer,
+                        bias_initializer=initializer,
                         name="state_value"
                     )
                 with tf.variable_scope("action_advantage"):
@@ -301,6 +312,8 @@ class DQN(object):
                         inputs=advatage_layer,
                         units=self.action_count,
                         activation=None,
+                        kernel_initializer=initializer,
+                        bias_initializer=initializer,
                         name="action_advantage"
                     )
                 with tf.variable_scope("duel_q"):
@@ -311,6 +324,8 @@ class DQN(object):
                 dense_layer = tf.layers.dense(
                     inputs=tf_img_feature,
                     units=512,
+                    kernel_initializer=initializer,
+                    bias_initializer=initializer,
                     activation=tf.nn.relu,
                     name="dense_layer"
                 )
@@ -318,6 +333,8 @@ class DQN(object):
                     inputs=dense_layer,
                     units=self.action_count,
                     activation=None,
+                    kernel_initializer=initializer,
+                    bias_initializer=initializer,
                     name="prediction_layer"
                 )
         return q
